@@ -1,0 +1,53 @@
+---
+- name: Deploy Flask App with uWSGI + Nginx using Docker
+  hosts: app
+  become: yes
+
+  vars:
+    app_repo: "https://github.com/tiangolo/uwsgi-nginx-flask-docker.git"
+    app_dir: "/home/ec2-user/uwsgi-nginx-flask-docker"
+    dockerfile_path: "python3.10.dockerfile"
+
+  tasks:
+    - name: Install Docker
+      yum:
+        name: docker
+        state: present
+
+    - name: Start Docker service
+      service:
+        name: docker
+        state: started
+        enabled: yes
+
+    - name: Add ec2-user to docker group
+      user:
+        name: ec2-user
+        groups: docker
+        append: yes
+
+    - name: Install Git
+      yum:
+        name: git
+        state: present
+
+    - name: Clone Flask app repo
+      become: false
+      git:
+        repo: "{{ app_repo }}"
+        dest: "{{ app_dir }}"
+        version: master
+        force: yes
+
+    - name: Build Docker image
+      become: true
+      shell: docker build -t flask-app -f {{ dockerfile_path }} .
+      args:
+        chdir: "{{ app_dir }}/docker-images/"
+
+    - name: Run Flask container
+      become: true
+      shell: |
+        docker stop flask-container || true
+        docker rm flask-container || true
+        docker run -d --name flask-container -p 80:80 flask-app
